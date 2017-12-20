@@ -10,12 +10,13 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_chunk$set(cache = TRUE)
+options(warn = -1)
 ```
 
 ## Introduction
 
 
-```{r , echo=TRUE}
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
 ## importing libraries
 library("knitr")
 library("ggplot2")
@@ -31,7 +32,6 @@ library("plyr")
 library("Rmisc")
 library("party")
 library("doMC")
-
 
 ## loading locally stored data
 test_set <- read.csv("../data/test.csv", na.strings = c("NA",""))
@@ -85,7 +85,7 @@ data$Titles[data$Titles %in% minor_title_male]  <- 'Mr'
 
 This new feature is gonna be very handy to estimate missing ages for passengers!
 
-```{r}
+```{r, message=FALSE, warning=FALSE}
 ## here we construct values for missing ages by taking
 ## a mean for each name title. May not be the best way!
 mean_age_by_title <- aggregate(Age ~ Titles, data = data, mean)
@@ -103,11 +103,11 @@ data[is.na(data$Embarked),]$Embarked <- "S"
 
 ```
 
-```{r}
+```{r, message=FALSE, warning=FALSE}
 kable(table(data$Sex, data$Titles), align = "l")
 ```
 
-```{r,echo=FALSE, eval=TRUE}
+```{r, eval=TRUE, echo=FALSE, message=FALSE, warning=FALSE}
 data$AdultTeenChi[data$Age <= 12.0] <- "Child"
 data$AdultTeenChi[data$Age > 12.0 & data$Age <= 20.0] <- "Teen"
 data$AdultTeenChi[data$Age > 20.0 & data$Age <= 35.0] <- "YoungAdult"
@@ -118,7 +118,7 @@ kable(table(data$AdultTeenChi, data$Titles), align = "l")
 ```
 
 
-```{r}
+```{r, message=FALSE, warning=FALSE}
 ## recollecting the data back to train and test sets after
 ## cleaning and imputations are done
 data$Titles <- as.factor(data$Titles)
@@ -130,7 +130,7 @@ test_set$Survived <- NULL
 ```
 
 ## Exploratory Analysis
-```{r, echo=FALSE,fig.width=10, fig.height=4,eval=FALSE}
+```{r, eval=FALSE, echo=FALSE, fig.height=4, fig.width=10, message=FALSE, warning=FALSE}
 
 p1 <- ggplot(train_set, aes(x= Pclass, fill= factor(Survived))) +
             geom_histogram(binwidth=0.4, position="dodge")+
@@ -161,8 +161,9 @@ multiplot(p1,p2,cols=2)
 
 ## Machine Learning
 
-```{r}
+```{r, message=FALSE, warning=FALSE}
 ## setting seed for random number generator
+seed <- 2017
 set.seed(seed)
 
 ## creating a data partition
@@ -174,17 +175,16 @@ CrossVal <- train_set[-train_indx, ]
 
 
 
-```{r knn,eval=TRUE}
+```{r knn, eval=TRUE, message=FALSE, warning=FALSE}
 n_cores <- 8
 registerDoMC(cores = n_cores)
-seed <- 2017
 set.seed(seed)
 n_resamples <- n_cores
 n_repeats <- 4
 list_length <- n_resamples*n_repeats + 1
 seeds <- vector(mode = "list", length = list_length)
 tuneLength <- 20
-for(i in 1:seeds_length) seeds[[i]] <- sample.int(1000, tuneLength)
+for(i in 1:list_length) seeds[[i]] <- sample.int(1000, tuneLength)
 
 ctrl <- trainControl(method = "repeatedcv",
                      number = n_resamples,
@@ -196,7 +196,7 @@ ctrl <- trainControl(method = "repeatedcv",
 knnFit <- train(factor(Survived) ~ . ,
                     data = Training,
                     method = "knn",
-                    metric = "RMSE",
+                    metric = "Accuracy",
                     trControl = ctrl,
                     preProcess = c("center","scale"),
                     tuneLength = tuneLength)
@@ -213,7 +213,7 @@ knn_acc <- con_mat$overall[1]
 
 
 
-```{r tree, echo=TRUE, eval=TRUE}
+```{r tree, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
 ## building a model with trees
 model_trees <- rpart(factor(Survived) ~.,
                      data = Training,
@@ -243,13 +243,12 @@ prediction_pruned_train <- predict(pruned_tree, CrossVal, type = "class")
 con_mat_pruned_train <- confusionMatrix(prediction_pruned_train, CrossVal$Survived)
 tree_acc <- con_mat_pruned_train$overall[1]
 treeFit <- pruned_tree
-
 ```
 
 
 ## Stochastic grad boosting
 
-```{r}
+```{r GradBoost, message=FALSE, warning=FALSE}
 gbmGrid <-  expand.grid(shrinkage = c(0.1,0.2,0.3,0.4),
                         interaction.depth = c(3,4,5,6), 
                         n.trees = (2:50)*2,
@@ -282,7 +281,7 @@ boost_acc <- con_mat$overall[1]
 
 ##ML: Random Forest
 
-```{r Random Forest, eval=FALSE}
+```{r Random Forest, eval=TRUE, message=FALSE, warning=FALSE}
 
 #####################################################################################
 customRF <- list(type = "Classification",
@@ -303,7 +302,7 @@ customRF$levels <- function(x) x$classes
 #######################################################################################
 
 
-for(i in 1:seeds_length) seeds[[i]] <- sample.int(1000, 60) # 4*15=60
+for(i in 1:list_length) seeds[[i]] <- sample.int(1000, 60) # 4*15=60
 tunegrid <- expand.grid(.mtry = c(1:15),
                         .ntree=c(500, 1000, 1500, 2000))
 ctrl <- trainControl(method = "repeatedcv",
@@ -332,7 +331,44 @@ rf_acc <- con_mat$overall[1]
 ```
 
 
-```{r,eval=F, echo=FALSE}
+
+## Neural Network Model
+
+```{r nnet}
+
+ctrl <- trainControl(method = "repeatedcv", 
+                           number = n_repeats, 
+                           repeats = n_repeats, 
+                           classProbs = TRUE, 
+                           summaryFunction = twoClassSummary,
+                           allowParallel = TRUE)
+
+nnetGrid <- expand.grid(size = seq(from = 4, to = 10, by = 2),
+                         decay = seq(from = 0.005, to = 0.02, by = 0.005))
+
+nnetFit <- train(factor(Survived) ~ .,
+                 data = Training,
+                 method = "nnet",
+                 metric = "ROC",
+                 trControl = ctrl,
+                 preProcess = c("center","scale"),
+                 tuneGrid = nnetGrid,
+                 verbose = FALSE)
+
+prediction_nnet <- predict(nnetFit, newdata = CrossVal, type = "raw")
+con_mat_nnet <- confusionMatrix(prediction_nnet, CrossVal$Survived)
+
+#plot and save
+plot(nnetFit)
+print(nnetFit)
+#best_size <- as.numeric(nnetFit$bestTune[1])
+#best_decay <- as.numeric(nnetFit$bestTune[2])
+
+```
+
+
+
+```{r, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
 ## predicting test set
 test_pred_boost <- predict(gbmFit, test_set, type = "raw")
 test_pred_knn <- predict(knnFit, test_set, type = "raw")
@@ -343,13 +379,15 @@ TestPredData <- data.frame("knn" = as.numeric(test_pred_knn) -1,
                            "trees" = as.numeric(test_pred_trees) -1,
                            "boost" = as.numeric(test_pred_boost) -1,
                            "rf" = as.numeric(test_pred_rf) -1)
+```
 
+```{r CorrPlot, message=FALSE, warning=FALSE}
 library(corrplot)
 corrplot(cor(TestPredData), method = "circle")
 ```
 
 
-```{r}
+```{r, message=FALSE, warning=FALSE}
 ## storing and outputing the predicting into csv file
 prediction <- test_pred_rf
 output <- data.frame(PassengerID = test_set$PassengerId, Survived = prediction)
