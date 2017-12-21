@@ -335,19 +335,20 @@ rf_acc <- con_mat$overall[1]
 ## Neural Network Model
 
 ```{r nnet}
+list_length <- n_resamples*n_repeats + 1
+#seeds <- vector(mode = "list", length = list_length)
+#for(i in 1:list_length) seeds[[i]] <- sample.int(1000, 32) # 4*4=16
 
 ctrl <- trainControl(method = "repeatedcv", 
-                           number = n_repeats, 
+                           number = n_resamples, 
                            repeats = n_repeats, 
                            classProbs = TRUE, 
-                           summaryFunction = twoClassSummary,
-                           allowParallel = TRUE)
+                           summaryFunction = twoClassSummary)
 
-nnetGrid <- expand.grid(size = seq(from = 4, to = 10, by = 2),
-                         decay = seq(from = 0.005, to = 0.02, by = 0.005))
+nnetGrid <- expand.grid(size = seq(from = 2, to = 10, by = 1),
+                         decay = seq(from = 0.1, to = 0.2, by = 0.1))
 
-nnetFit <- train(factor(Survived) ~ .,
-                 data = Training,
+nnetFit <- train(factor(Survived) ~ ., data = Training,
                  method = "nnet",
                  metric = "ROC",
                  trControl = ctrl,
