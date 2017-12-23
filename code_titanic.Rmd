@@ -172,6 +172,7 @@ train_indx <- createDataPartition(y=train_set$Survived, p = 0.70, list=FALSE)
 Training <- train_set[train_indx, ]
 CrossVal <- train_set[-train_indx, ]
 
+Training <- train_set
 ```
 
 
@@ -209,7 +210,7 @@ plot(knnFit)
 #cv_pred_knn <- predict(knnFit, newdata = CrossVal)
 #con_mat <- confusionMatrix(cv_pred_knn, CrossVal$Survived)
 #knn_acc <- con_mat$overall[1]
-
+knn_acc <- max(knnFit$results$Accuracy)
 ```
 
 
@@ -351,35 +352,80 @@ nnetFit <- train(make.names(Survived) ~ ., data = Training,
                  tuneGrid = nnetGrid,
                  verbose = FALSE)
 
-#cv_pred_nnet <- predict(nnetFit, newdata = CrossVal, type = "raw")
-#con_mat_nnet <- confusionMatrix(cv_pred_nnet, make.names(CrossVal$Survived))
 
 #plot and save
 plot(nnetFit)
-#print(nnetFit)
-#best_size <- as.numeric(nnetFit$bestTune[1])
-#best_decay <- as.numeric(nnetFit$bestTune[2])
 
 ```
 
+## SVM
+
+```{r svm_rk}
+
+## Support Vector Machines with radial kernel
+SVMctrl <- trainControl(method = "cv", number = n_resamples, verbose = FALSE)
+
+## Fit Radial Kernel----------------------------------------------------------
+SVMgridRad <- expand.grid(C = (1:30)*0.1 + 0.2, sigma = c(0.02,0.04,0.06,0.08,0.1))
+SVMFit_rk <- train(factor(Survived) ~ .,
+                     data = Training, 
+                     method = "svmRadial",
+                     trControl = SVMctrl,
+                     tuneGrid = SVMgridRad,
+                     preProc = c("scale","center"),
+                     verbose = FALSE)
+
+#best_sigma <- model_svmRad$bestTune$sigma
+#best_C <- model_svmRad$bestTune$C
+#prediction_svm_Rad <- predict(model_svmRad, testing)
+#con_mat_Rad <- confusionMatrix(prediction_svm_Rad, testing$income)
+plot(SVMFit_rk)
+```
+
+
+```{r svm_lk}
+
+## Fit SVM Linear Kernel
+SVMgridLin <- expand.grid(C = (1:10)*0.2 + 0.5) 
+
+SVMFit_lk <- train(factor(Survived) ~ .,
+                      data = Training, 
+                      method = 'svmLinear',
+                      trControl = SVMctrl,
+                      tuneGrid = SVMgridLin,
+                      preProc = c("scale","center"),
+                      verbose = FALSE)
+#prediction_svm_Lin <- predict(model_svmLin, testing)
+#con_mat_Lin <- confusionMatrix(prediction_svm_Lin, testing$income)
+
+#compare two models collect models
+#result_models <- resamples(list(Radial=model_svmRad, Linear=model_svmLin))
+
+#summarize the distributions
+#summary(result_models)
+```
 
 
 ```{r Predictions, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
 
 #predicting cv set
-cv_pred_boost <- predict(gbmFit, CrossVal, type = "raw")
-cv_pred_knn <- predict(knnFit, CrossVal, type = "raw")
-cv_pred_trees <- predict(treeFit, CrossVal, type = "class")
-cv_pred_rf <- predict(rfFit, CrossVal, type = "raw")
-cv_pred_nnet <- predict(nnetFit, CrossVal, type = "raw")
+train_pred_boost <- predict(gbmFit, Training, type = "raw")
+train_pred_knn <- predict(knnFit, Training, type = "raw")
+train_pred_trees <- predict(treeFit, Training, type = "class")
+train_pred_rf <- predict(rfFit, Training, type = "raw")
+train_pred_nnet <- predict(nnetFit, Training, type = "raw")
+train_pred_svmr <- predict(SVMFit_rk, train_set, type="raw")
+train_pred_svml <- predict(SVMFit_lk, train_set, type="raw")
 
 
 #combine all cv predictions into 1 data frame
-CVPredDF <- data.frame("knn" = as.numeric(cv_pred_knn) -1,
-                       "trees" = as.numeric(cv_pred_trees) -1,
-                       "boost" = as.numeric(cv_pred_boost) -1,
-                       "rf" = as.numeric(cv_pred_rf) -1,
-                       "nnet" = as.numeric(cv_pred_nnet) -1)
+TrainPredDF <- data.frame("knn" = as.numeric(train_pred_knn) -1,
+                       "trees" = as.numeric(train_pred_trees) -1,
+                       "boost" = as.numeric(train_pred_boost) -1,
+                       "rf" = as.numeric(train_pred_rf) -1,
+                       "nnet" = as.numeric(train_pred_nnet) -1,
+                       "svmR" = as.numeric(train_pred_svmr) -1,
+                       "svmL" = as.numeric(train_pred_svml) -1)
 
 
 #predicting test set
@@ -388,14 +434,16 @@ test_pred_knn <- predict(knnFit, test_set, type = "raw")
 test_pred_trees <- predict(treeFit, test_set, type = "class")
 test_pred_rf <- predict(rfFit, test_set, type = "raw")
 test_pred_nnet <- predict(nnetFit, test_set, type = "raw")
-
+test_pred_svmr <- predict(SVMFit_rk, test_set, type="raw")
+test_pred_svml <- predict(SVMFit_lk, test_set, type="raw")
 
 TestPredDF <- data.frame("knn" = as.numeric(test_pred_knn) -1,
                          "trees" = as.numeric(test_pred_trees) -1,
                          "boost" = as.numeric(test_pred_boost) -1,
                          "rf" = as.numeric(test_pred_rf) -1,
-                         "nnet" = as.numeric(test_pred_nnet) -1)
-
+                         "nnet" = as.numeric(test_pred_nnet) -1,
+                         "svmR" = as.numeric(test_pred_svmr) -1,
+                         "svmL" = as.numeric(test_pred_svml) -1)
 
 ```
 
@@ -403,25 +451,25 @@ TestPredDF <- data.frame("knn" = as.numeric(test_pred_knn) -1,
 ```{r CorrPlot, message=FALSE, warning=FALSE, fig.width=10, fig.height=5}
 #CVPredDF$comb <- as.numeric(cv_pred_comb)
 #visualize cv and test predictions via correlation plots
-par(mfrow = c(1,2), font = 2, font.main= 10, cex = 0.8)
+par(mfrow = c(1,2), font = 2, font.main= 10, cex = 0.9)
 corrplot.mixed(cor(TestPredDF))
-title(main = "Test set", adj = 0.3)
-corrplot.mixed(cor(CVPredDF))
-title(main = "Cross validation set", adj = 0.3)
+title(main = "Test set", adj = 0.5)
+corrplot.mixed(cor(TrainPredDF))
+title(main = "Train set", adj = 0.5)
 ```
 
 
-```{r combineViaGam, message=FALSE, warning=FALSE}
-CVPredDF$Survived <- CrossVal$Survived
-cv_combFit <- train(factor(Survived) ~. , method = "gam", data = CVPredDF)
-cv_pred_comb <- predict(cv_combFit, CVPredDF, type = "raw")
-test_pred_comb <- predict(cv_combFit, TestPredDF, type = "raw")
+```{r combineViaGam, message=FALSE, warning=FALSE, eval=FALSE, echo=FALSE}
+TrainPredDF$Survived <- train_set$Survived
+train_combFit <- train(factor(Survived) ~. , method = "gam", data = TrainPredDF)
+train_pred_comb <- predict(train_combFit, TrainPredDF, type = "raw")
+test_pred_comb <- predict(train_combFit, TestPredDF, type = "raw")
 ```
 
 ```{r majority vote, message=FALSE, warning=FALSE}
 tmp <- rowSums(TestPredDF) / ncol(TestPredDF)
-tmp[tmp >= 0.5] <- 1
-tmp[tmp < 0.5] <- 0
+tmp[tmp >= 0.6] <- 1
+tmp[tmp < 0.6] <- 0
 test_pred_majority <- tmp
 ```
 
@@ -429,8 +477,8 @@ test_pred_majority <- tmp
 ```{r, message=FALSE, warning=FALSE}
 ## storing and outputing the predicting into csv file
 prediction <- test_pred_majority
-output <- data.frame(PassengerID = test_set$PassengerId, Survived = factor(a))
-write.csv(output, file = 'ensemble_prediction.csv', row.names = F)
+output <- data.frame(PassengerID = test_set$PassengerId, Survived = prediction)
+write.csv(output, file = 'majoroty_prediction.csv', row.names = F)
 ```
 
 
