@@ -33,6 +33,8 @@ library("Rmisc")
 library("party")
 library("doMC")
 library("corrplot")
+library("dplyr")
+library("tidyr")
 
 ## loading locally stored data
 test_set <- read.csv("../data/test.csv", na.strings = c("NA",""))
@@ -206,10 +208,6 @@ knnFit <- train(factor(Survived) ~ . ,
 #plot cross validation curve
 plot(knnFit)
 
-# predict with knn
-#cv_pred_knn <- predict(knnFit, newdata = CrossVal)
-#con_mat <- confusionMatrix(cv_pred_knn, CrossVal$Survived)
-#knn_acc <- con_mat$overall[1]
 knn_acc <- max(knnFit$results$Accuracy)
 ```
 
@@ -229,7 +227,7 @@ plotcp(treeFit)
 
 ## apply prunning using optimum values for "cp" and "nsplit" 
 cp <- treeFit$cptable[which.min(treeFit$cptable[,"xerror"]),"CP"]
-pruned_treeFit <- prune(treeFit, cp = cp)
+PtreeFit <- prune(treeFit, cp = cp)
 
 ## plotting pruned tree diagram
 library(rpart.plot)
@@ -240,11 +238,6 @@ rpart.plot(pruned_treeFit,
             shadow.col = "gray",
             sub = "Pruned Tree Diagram")
 
-## predicting with pruned tree on validation set
-#cv_pred_tree <- predict(pruned_treeFit, CrossVal, type = "class")
-#con_mat_pruned_tree <- confusionMatrix(cv_pred_tree, CrossVal$Survived)
-#tree_acc <- con_mat_pruned_tree$overall[1]
-treeFit <- pruned_treeFit
 ```
 
 
@@ -269,22 +262,13 @@ gbmFit <- train(factor(Survived) ~ .,
                         verbose = FALSE, 
                         tuneGrid = gbmGrid)
 
-#best_n_trees <- gbmFit$bestTune$n.trees
-#best_int_depth <- gbmFit$bestTune$interaction.depth
-#best_shrink <- gbmFit$bestTune$shrinkage
 plot(gbmFit)
-
-## making a prediction
-#cv_pred_boost <- predict(gbmFit, CrossVal, type = "raw")
-#con_mat <- confusionMatrix(cv_pred_boost, CrossVal$Survived)
-#boost_acc <- con_mat$overall[1]
 ```
 
 
 ##ML: Random Forest
 
 ```{r Random Forest, eval=TRUE, message=FALSE, warning=FALSE}
-
 #####################################################################################
 customRF <- list(type = "Classification",
                  library = "randomForest",
@@ -321,11 +305,6 @@ rfFit <- train(factor(Survived) ~.,
                trControl = rfCtrl)
 
 plot(rfFit)
-## making a prediction
-#cv_pred_rf <- predict(rfFit, CrossVal, type = "raw")
-## checking performance on CV set
-#con_mat <- confusionMatrix(cv_pred_rf, CrossVal$Survived)
-#rf_acc <- con_mat$overall[1]
 ```
 
 
@@ -352,13 +331,10 @@ nnetFit <- train(make.names(Survived) ~ ., data = Training,
                  tuneGrid = nnetGrid,
                  verbose = FALSE)
 
-
-#plot and save
 plot(nnetFit)
-
 ```
 
-## SVM
+## SVM Radial Kernel
 
 ```{r svm_rk}
 
@@ -374,14 +350,10 @@ SVMFit_rk <- train(factor(Survived) ~ .,
                      tuneGrid = SVMgridRad,
                      preProc = c("scale","center"),
                      verbose = FALSE)
-
-#best_sigma <- model_svmRad$bestTune$sigma
-#best_C <- model_svmRad$bestTune$C
-#prediction_svm_Rad <- predict(model_svmRad, testing)
-#con_mat_Rad <- confusionMatrix(prediction_svm_Rad, testing$income)
 plot(SVMFit_rk)
 ```
 
+## SVM Linear Kernel
 
 ```{r svm_lk}
 
@@ -395,14 +367,6 @@ SVMFit_lk <- train(factor(Survived) ~ .,
                       tuneGrid = SVMgridLin,
                       preProc = c("scale","center"),
                       verbose = FALSE)
-#prediction_svm_Lin <- predict(model_svmLin, testing)
-#con_mat_Lin <- confusionMatrix(prediction_svm_Lin, testing$income)
-
-#compare two models collect models
-#result_models <- resamples(list(Radial=model_svmRad, Linear=model_svmLin))
-
-#summarize the distributions
-#summary(result_models)
 ```
 
 
@@ -411,7 +375,8 @@ SVMFit_lk <- train(factor(Survived) ~ .,
 #predicting cv set
 train_pred_boost <- predict(gbmFit, Training, type = "raw")
 train_pred_knn <- predict(knnFit, Training, type = "raw")
-train_pred_trees <- predict(treeFit, Training, type = "class")
+train_pred_tree <- predict(treeFit, Training, type = "class")
+train_pred_Ptree <- predict(PtreeFit, Training, type = "class")
 train_pred_rf <- predict(rfFit, Training, type = "raw")
 train_pred_nnet <- predict(nnetFit, Training, type = "raw")
 train_pred_svmr <- predict(SVMFit_rk, train_set, type="raw")
@@ -420,7 +385,8 @@ train_pred_svml <- predict(SVMFit_lk, train_set, type="raw")
 
 #combine all cv predictions into 1 data frame
 TrainPredDF <- data.frame("knn" = as.numeric(train_pred_knn) -1,
-                       "trees" = as.numeric(train_pred_trees) -1,
+                       "tree" = as.numeric(train_pred_tree) -1,
+                       "Ptree" = as.numeric(train_pred_Ptree) -1,
                        "boost" = as.numeric(train_pred_boost) -1,
                        "rf" = as.numeric(train_pred_rf) -1,
                        "nnet" = as.numeric(train_pred_nnet) -1,
@@ -431,14 +397,16 @@ TrainPredDF <- data.frame("knn" = as.numeric(train_pred_knn) -1,
 #predicting test set
 test_pred_boost <- predict(gbmFit, test_set, type = "raw")
 test_pred_knn <- predict(knnFit, test_set, type = "raw")
-test_pred_trees <- predict(treeFit, test_set, type = "class")
+test_pred_tree <- predict(treeFit, test_set, type = "class")
+test_pred_Ptree <- predict(PtreeFit, test_set, type = "class")
 test_pred_rf <- predict(rfFit, test_set, type = "raw")
 test_pred_nnet <- predict(nnetFit, test_set, type = "raw")
 test_pred_svmr <- predict(SVMFit_rk, test_set, type="raw")
 test_pred_svml <- predict(SVMFit_lk, test_set, type="raw")
 
 TestPredDF <- data.frame("knn" = as.numeric(test_pred_knn) -1,
-                         "trees" = as.numeric(test_pred_trees) -1,
+                         "tree" = as.numeric(test_pred_tree) -1,
+                         "Ptree" = as.numeric(test_pred_Ptree) -1,
                          "boost" = as.numeric(test_pred_boost) -1,
                          "rf" = as.numeric(test_pred_rf) -1,
                          "nnet" = as.numeric(test_pred_nnet) -1,
@@ -474,15 +442,33 @@ test_pred_majority <- tmp
 ```
 
 
-```{r, message=FALSE, warning=FALSE}
+```{r, message=FALSE, warning=FALSE,fig.height=5,fig.width=10}
+results <- data.frame(knn = c(confusionMatrix(train_pred_knn, Training$Survived)$overall[1],0.78947),
+            tree = c(confusionMatrix(train_pred_tree, Training$Survived)$overall[1],0.73205),
+            Ptree = c(confusionMatrix(train_pred_Ptree, Training$Survived)$overall[1],0.79425),
+            boost = c(confusionMatrix(train_pred_boost, Training$Survived)$overall[1],0.77033),
+            rf = c(confusionMatrix(train_pred_rf, Training$Survived)$overall[1],0.78947),
+            nnet = c(confusionMatrix(factor(as.numeric(train_pred_nnet)-1), Training$Survived)$overall[1],0.77990),
+            svmr = c(confusionMatrix(train_pred_svmr, Training$Survived)$overall[1],0.79904),
+            svml = c(confusionMatrix(train_pred_svml, Training$Survived)$overall[1],0.78468),
+            row.names = c("train","test"))%>%t()%>%data.frame()
+results$method <- rownames(results)
+
+gather(results,train, test, -method, key = "type", value = "scores")%>%
+        ggplot(aes(factor(method), scores, fill = type)) + 
+            geom_bar(stat="identity", position = "dodge",width = 0.5) + 
+            theme_bw() +
+            labs(title = "", x = "Method", y = "Scores", color="") +
+            scale_fill_brewer(palette = "Set1")
+
+```        
+
+
+```{r SubmissionPrep, message=FALSE, warning=FALSE,eval=FALSE,echo=FALSE}
 ## storing and outputing the predicting into csv file
 prediction <- test_pred_majority
 output <- data.frame(PassengerID = test_set$PassengerId, Survived = prediction)
-write.csv(output, file = 'majoroty_prediction.csv', row.names = F)
+write.csv(output, file = 'prediction.csv', row.names = F)
 ```
-
-
-
-
 
 
