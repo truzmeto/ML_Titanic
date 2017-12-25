@@ -15,6 +15,13 @@ options(warn = -1)
 
 ## Introduction
 
+We must regularly go to gym in order to stay fit. Same concept applies to brain muscules towards 
+some specific knowledge. One must be active in kaggle to train his/her machine learning muscules.
+Anyways, I've decided to do some deeper machine learning after taking some advanced ML courses. Looks
+like titanic data set is the best and most popular data to start with. Here, I will exploit some machine learning methods such as "knn", "Dtree", "prunnedTree", "gboosting", "nnet", "SVM" and "rf" with repeated cross validation that helps to choose best hyperparameter for an optimum prediction. Then, I combine 
+all predictions of test set to do majority vote. My finale prediction put me at top 9%, which is not bad
+for starters, but it is possible to push it even more up by combining more models. 
+
 
 ```{r, echo=TRUE, message=FALSE, warning=FALSE}
 ## importing libraries
@@ -35,6 +42,7 @@ library("doMC")
 library("corrplot")
 library("dplyr")
 library("tidyr")
+library("rpart.plot")
 
 ## loading locally stored data
 test_set <- read.csv("../data/test.csv", na.strings = c("NA",""))
@@ -46,29 +54,23 @@ data <- rbind(train_set, test_set)
 ```
 
 
-## Data Cleaning & Feature Extraction
+## Preprocessing, Data Cleaning & Feature Extraction
+
+My preprocessing of unclean data is very similar to what most people did. I need to give a credit
+to Megan Risdal since I took some chunks from her kernel. 
 
 ```{r}
 #counting percentage of NA's for each feature
 round(colSums(is.na(data))/nrow(data) *100,2)
-```
 
-Cabin feature have 77.1% missing values, so let's ignore it.
-
-```{r}
-## removing Cabin features from both train and test sets
+#Cabin feature have 77.1% missing values, so let's ignore it.
+# removing Cabin features from both train and test sets
 data$Cabin <- NULL
-```
 
-
-```{r}
 ## creating a new feature by extracting title from names, where we replace
 ## everything before ', ' and after '.' with '' (empty char.)
 data$Titles <- gsub('(.*[,] )|([.].*)', '', data$Name)
-```
 
-
-```{r}
 ## tabulating titles grouped by sex
 table(data$Sex, data$Titles)
 
@@ -84,11 +86,7 @@ data[data$Sex == 'female' & data$Titles == 'Dr',]$Titles <- 'Miss'
 ## renaming all rare male titles with most common male title
 minor_title_male <- c('Capt', 'Col', 'Don', 'Dr', 'Major', 'Rev', 'Sir', 'Jonkheer')
 data$Titles[data$Titles %in% minor_title_male]  <- 'Mr'
-```
 
-This new feature is gonna be very handy to estimate missing ages for passengers!
-
-```{r, message=FALSE, warning=FALSE}
 ## here we construct values for missing ages by taking
 ## a mean for each name title. May not be the best way!
 mean_age_by_title <- aggregate(Age ~ Titles, data = data, mean)
@@ -104,13 +102,9 @@ data[is.na(data$Fare),]$Fare <- mean_fare_by_pclass$Fare[3]
 ## imputing missing embarkation type with highest embarkation class
 data[is.na(data$Embarked),]$Embarked <- "S"
 
-```
+#kable(table(data$Sex, data$Titles), align = "l")
 
-```{r, message=FALSE, warning=FALSE}
-kable(table(data$Sex, data$Titles), align = "l")
-```
-
-```{r, eval=TRUE, echo=FALSE, message=FALSE, warning=FALSE}
+# age based feature ectraction
 data$AdultTeenChi[data$Age <= 12.0] <- "Child"
 data$AdultTeenChi[data$Age > 12.0 & data$Age <= 20.0] <- "Teen"
 data$AdultTeenChi[data$Age > 20.0 & data$Age <= 35.0] <- "YoungAdult"
@@ -118,10 +112,7 @@ data$AdultTeenChi[data$Age > 35.0 & data$Age <= 50.0] <- "MiddleAged"
 data$AdultTeenChi[data$Age > 50.0] <- "Siniors"
 data$AdultTeenChi <- as.factor(data$AdultTeenChi)
 kable(table(data$AdultTeenChi, data$Titles), align = "l")
-```
 
-
-```{r, message=FALSE, warning=FALSE}
 ## recollecting the data back to train and test sets after
 ## cleaning and imputations are done
 data$Titles <- as.factor(data$Titles)
@@ -133,6 +124,8 @@ test_set$Survived <- NULL
 ```
 
 ## Exploratory Analysis
+
+
 ```{r, eval=FALSE, echo=FALSE, fig.height=4, fig.width=10, message=FALSE, warning=FALSE}
 
 p1 <- ggplot(train_set, aes(x= Pclass, fill= factor(Survived))) +
@@ -144,7 +137,8 @@ p1 <- ggplot(train_set, aes(x= Pclass, fill= factor(Survived))) +
                     legend.position = c(0.3,0.8),
                     axis.text = element_text(size=12),
                     plot.title = element_text(size = 18, hjust = 0.5),
-                    text=element_text(family="Times New Roman")) 
+                    text=element_text(family="Times New Roman")) +
+            scale_fill_brewer(palette = "Set1")
 
 
 p2 <- ggplot(data, aes(x=Fare, fill = Sex)) +
@@ -157,34 +151,46 @@ p2 <- ggplot(data, aes(x=Fare, fill = Sex)) +
                     axis.title = element_text(size = 16.0),
                     axis.text = element_text(size=12),
                     plot.title = element_text(size = 18, hjust = 0.5),
-                    text=element_text(family="Times New Roman")) 
+                    text=element_text(family="Times New Roman")) +
+            scale_fill_brewer(palette = "Set1")
+
 
 multiplot(p1,p2,cols=2)
 ```
 
 ## Machine Learning
 
+I used "caret" package with multicore processing to speed up k-fold cross validation. 
+It has a lot of ML methods, which can be accesed via following command "names(getModelInfo())".
+Training accuracy reported is the accuracy over entire training set. Repeated cross validation
+uses repeatedly resampled subsets to validated the model.  
+
 ```{r, message=FALSE, warning=FALSE}
 ## setting seed for random number generator
 seed <- 2017
 set.seed(seed)
+n_cores <- 8
+registerDoMC(cores = n_cores)
+n_resamples <- n_cores
+n_repeats <- 4
 
 ## creating a data partition
-train_indx <- createDataPartition(y=train_set$Survived, p = 0.70, list=FALSE)
-Training <- train_set[train_indx, ]
-CrossVal <- train_set[-train_indx, ]
-
+#train_indx <- createDataPartition(y=train_set$Survived, p = 0.70, list=FALSE)
+#Training <- train_set[train_indx, ]
+#CrossVal <- train_set[-train_indx, ]
 Training <- train_set
 ```
 
 
+## K-Nearest Neighbor 
+
+Knn algorithm classifies data points based on K closest neighbors in distance, where
+over represented class gets the vote. K value and distance metric are the only
+parameters to tune for cross validation. It is slow with large data sets and high dimensional
+data. 
 
 ```{r knn, eval=TRUE, message=FALSE, warning=FALSE}
-n_cores <- 8
-registerDoMC(cores = n_cores)
-set.seed(seed)
-n_resamples <- n_cores
-n_repeats <- 4
+
 list_length <- n_resamples*n_repeats + 1
 seeds <- vector(mode = "list", length = list_length)
 tuneLength <- 20
@@ -207,14 +213,21 @@ knnFit <- train(factor(Survived) ~ . ,
 
 #plot cross validation curve
 plot(knnFit)
-
-knn_acc <- max(knnFit$results$Accuracy)
 ```
 
+As depicted in above figure, the best number for neirest neighbour is `r knnFit$bestTune` that gave higest
+accuracy. 
+
+
+## Decision Tree Classification with Post Prunnig 
+
+Here I used decision tree classifier under "rpart" package with maximum information gain to
+determine which feature is given a priority for splitting(treeFit). I performed post pruning to prevent
+overfitting(PtreeFit), which does in turn score better than original tree(treeFit) on testing set. 
 
 
 ```{r tree, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
-## building a model with trees
+#building a model with trees
 treeFit <- rpart(factor(Survived) ~.,
                      data = Training,
                      method = "class",
@@ -222,26 +235,33 @@ treeFit <- rpart(factor(Survived) ~.,
                      #prior = c(.55,.45)),
                      control = rpart.control(minsplit = 5, cp = 0)) 
 
-## plot xerror vs complexity parameter for original tree
+#plot xerror vs complexity parameter for original tree
 plotcp(treeFit)
+
+
+## plotting tree diagram
+rpart.plot(treeFit,
+            fallen.leaves = FALSE,
+            shadow.col = "gray",
+            sub = "Tree Diagram")
+
 
 ## apply prunning using optimum values for "cp" and "nsplit" 
 cp <- treeFit$cptable[which.min(treeFit$cptable[,"xerror"]),"CP"]
 PtreeFit <- prune(treeFit, cp = cp)
 
 ## plotting pruned tree diagram
-library(rpart.plot)
-rpart.plot(pruned_treeFit,
+rpart.plot(PtreeFit,
             fallen.leaves = FALSE,
             cex = 0.2,
             tweak = 2,
             shadow.col = "gray",
             sub = "Pruned Tree Diagram")
-
 ```
 
 
-## Stochastic grad boosting
+
+## Stochastic Gradient Boosting "gbm"
 
 ```{r GradBoost, message=FALSE, warning=FALSE}
 gbmGrid <-  expand.grid(shrinkage = c(0.1,0.2,0.3,0.4),
@@ -269,6 +289,8 @@ plot(gbmFit)
 ##ML: Random Forest
 
 ```{r Random Forest, eval=TRUE, message=FALSE, warning=FALSE}
+
+#Here we create custom rf method repeatedcv method is not implemented with it 
 #####################################################################################
 customRF <- list(type = "Classification",
                  library = "randomForest",
@@ -352,6 +374,7 @@ SVMFit_rk <- train(factor(Survived) ~ .,
                      verbose = FALSE)
 plot(SVMFit_rk)
 ```
+
 
 ## SVM Linear Kernel
 
@@ -470,5 +493,9 @@ prediction <- test_pred_majority
 output <- data.frame(PassengerID = test_set$PassengerId, Survived = prediction)
 write.csv(output, file = 'prediction.csv', row.names = F)
 ```
+
+## Summary
+
+
 
 
