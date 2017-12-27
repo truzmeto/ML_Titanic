@@ -15,12 +15,12 @@ options(warn = -1)
 
 ## Introduction
 
-We must regularly go to gym in order to stay fit. Same concept applies to brain muscules towards 
-some specific knowledge. One must be active in kaggle to train his/her machine learning muscules.
+We must regularly go to gym in order to stay fit. Same concept applies to brain muscles towards 
+some specific knowledge. One must be active in kaggle to train his/her machine learning muscles.
 Anyways, I've decided to do some deeper machine learning after taking some advanced ML courses. Looks
 like titanic data set is the best and most popular data to start with. Here, I will exploit some machine
 learning methods such as "knn", "Dtree", "prunnedTree", "gboosting", "nnet", "SVM" and "rf" with repeated
-cross validation that helps to choose best hyperparameter for an optimum prediction. Then, I combine all 
+cross validation that helps to choose best hyper parameter for an optimum prediction. Then, I combine all 
 predictions of test set to do majority vote. My finale prediction put me at top 9%, which is not bad
 for starters, but it is possible to push it even more up by combining more models. 
 
@@ -58,8 +58,8 @@ data <- rbind(train_set, test_set)
 
 ## Preprocessing, Data Cleaning & Feature Extraction
 
-My preprocessing of unclean data is very similar to what most people did. I need to give a credit
-to Megan Risdal since I took some chunks from her kernel. 
+My preprocessing of unclean data is very similar to what most people have done. I need to give a credit
+to Megan Risdal since I learned some tricks from her kernel. 
 
 ```{r preprocessing, message=FALSE, warning=FALSE}
 #counting percentage of NA's for each feature
@@ -125,10 +125,10 @@ train_set <- data[data$PassengerId < 892,]
 test_set$Survived <- NULL
 ```
 
-## Exploratory Analysis
+## Some statistics
 
 
-```{r, eval=T, echo=T, fig.height=4, fig.width=10, message=FALSE, warning=FALSE}
+```{r, eval=T, echo=T, fig.height=8, fig.width=10, message=FALSE, warning=FALSE}
 
 p1 <- ggplot(train_set, aes(x= Pclass, fill= factor(Survived))) +
             geom_histogram(binwidth=0.4, position="dodge")+
@@ -146,8 +146,8 @@ p1 <- ggplot(train_set, aes(x= Pclass, fill= factor(Survived))) +
 p2 <- ggplot(data, aes(x=Fare, fill = Sex)) +
             geom_density(alpha = 1.) +
             theme_bw() +
-            labs(title = "Survival by sex" ,
-                    x = "Passenger sex",
+            labs(title = "Fare by sex" ,
+                    x = "Passenger Fare",
                      y = "Density", color = "") +
             theme(legend.position = c(0.7,0.8),
                     axis.title = element_text(size = 16.0),
@@ -156,15 +156,58 @@ p2 <- ggplot(data, aes(x=Fare, fill = Sex)) +
                     text=element_text(family="Times New Roman")) +
             scale_fill_brewer(palette = "Set1")
 
-multiplot(p1,p2,cols=2)
+p3 <- ggplot(train_set, aes(x=Age, fill = factor(Survived))) +
+            geom_density(alpha = 1.) +
+            theme_bw() +
+            labs(title = "Age by Survival " ,
+                    x = "Passenger Age",
+                     y = "Density", color = "") +
+            theme(legend.position = c(0.7,0.8),
+                    axis.title = element_text(size = 16.0),
+                    axis.text = element_text(size=12),
+                    plot.title = element_text(size = 18, hjust = 0.5),
+                    text=element_text(family="Times New Roman")) +
+            scale_fill_brewer(palette = "Set1")
+
+p4 <- ggplot(data, aes(x=Age, fill = Sex)) +
+            geom_density(alpha = 1.) +
+            theme_bw() +
+            labs(title = "Age by sex" ,
+                    x = "Passenger Age",
+                    y = "Density", color = "") +
+            theme(legend.position = c(0.7,0.8),
+                    axis.title = element_text(size = 16.0),
+                    axis.text = element_text(size=12),
+                    plot.title = element_text(size = 18, hjust = 0.5),
+                    text=element_text(family="Times New Roman")) +
+            scale_fill_brewer(palette = "Set1")
+
+
+multiplot(p1,p2,p3,p4,cols=2)
 ```
+
+
+1. Survived vs deceased comparison by passenger class show interesting findings. Obviously, among 1st class passengers more people
+survived than deceased. Besides, if we compare number of survived over all classes first class seem to dominate. This suggests that
+even at that time wealthy had advantage over the poor. 
+
+2. By looking at peaks of distributions of ages histogramed by survival as a factor, we can conclude that average age of survived was
+less than the average age of deceased.  Mean age Survived = `r mean(train_set[train_set$Survived==1,]$Age)`, mean age deceased = 
+`r mean(train_set[train_set$Survived==0,]$Age)`.
+
+
+3. On average female tickets `r mean(data[data$Sex=='female',]$Fare)` were almost twice more expansive than male tickets
+`r mean(data[data$Sex=='male',]$Fare)`. This is a little unexpected. One rationalization could be that more females embarked on
+1st class than other lower classes, which increased the mean. 
+
+4. Females were younger than males on average. 
 
 ## Machine Learning
 
-I used "caret" package with multicore processing to speed up k-fold cross validation. 
-It has a lot of ML methods, which can be accesed via following command "names(getModelInfo())".
+I used "caret" package with multicore processing to speed up 8-fold cross validation. 
+It has a lot of ML methods, which can be accessed via following command "names(getModelInfo())".
 Training accuracy reported is the accuracy over entire training set. Repeated cross validation
-uses repeatedly resampled subsets to validated the model.  
+uses repeatedly re-sampled subsets to validated the model.   
 
 ```{r, message=FALSE, warning=FALSE}
 ## setting seed for random number generator
@@ -188,6 +231,8 @@ Training <- train_set
 Knn algorithm classifies data points based on K closest neighbors in distance, where
 over represented class gets the vote. K value and distance metric are the only
 parameters to tune for cross validation. It is slow with large and high dimensional data.
+Best K value can be found via elbow method(k value is chosen based on location where cross validation
+RMSE converge), or based on peak cross validation accuracy. 
 
 ```{r knn, eval=TRUE, message=FALSE, warning=FALSE}
 
@@ -215,14 +260,14 @@ knnFit <- train(factor(Survived) ~ . ,
 plot(knnFit)
 ```
 
-As depicted above, the best number for neirest neighbour is `r knnFit$bestTune` that gave higest
-accuracy. Algorithm automatically chooses best fit for further processing.    
+As depicted above, the best number for nearest neighbor is `r knnFit$bestTune` that gave highest
+cross validation accuracy `r max(knnFit$results[2])`. Algorithm automatically chooses best fit for further processing.      
 
 
 ## Decision Tree Classification with Post Prunnig 
 
-Here I used decision tree classifier under "rpart" package. I used information gain measure to
-determine which feature is given a priority for splitting(treeFit). To prevent overfitting(PtreeFit)
+Here I used decision tree classifier under "rpart" package. Information gain measure is used to
+determine which feature is given a priority for splitting at each node. To prevent over fitting(PtreeFit)
 I performed post pruning, which does in turn score better than original tree(treeFit) on testing set.
 
 ```{r tree, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, fig.width=5}
@@ -238,10 +283,10 @@ treeFit <- rpart(factor(Survived) ~.,
 plotcp(treeFit)
 ```
 
-How does post prunning work? Basically first we grow the tree and fit our training set. Then we start from the
-bottom and check if removing a nood(where split happens) will affect prediction accuracy. If elimination of a nood
+How does post pruning work? Basically first we grow the tree and fit our training set. Then we start from the
+bottom and check if removing a node(where split happens) will affect prediction accuracy. If elimination of a node
 reduces the accuracy on validation set then we keep it, otherwise we remove it and proceed. These procedure is suppose 
-to reduce tree size and help reduce overfitting. In order to do prunning program needs complexity parameter that corrsponds 
+to reduce tree size and help reduce over fitting. In order to do pruning program needs complexity parameter that corresponds 
 to a minimum xeror(cross validation error).  
 
 ```{r tree_diagram, message=FALSE, warning=FALSE,fig.width=12}
@@ -253,6 +298,7 @@ rpart.plot(treeFit,
 
 ```
 
+Pruuuuunnnnneeeee itttttt!
 
 ```{r Ptree, message=FALSE, warning=FALSE, fig.width=6}
 ## apply prunning using optimum values for "cp" and "nsplit" 
@@ -268,13 +314,14 @@ rpart.plot(PtreeFit,
             sub = "Pruned Tree Diagram")
 ```
 
-We can see that prunned tree is much smaller than the original in size, and later we will see that it performs better
+We can see that pruned tree is much smaller than the original in size, and later we will see that it performs better
 on testing set than the original fit. 
 
 
 ## Stochastic Gradient Boosting "gbm"
 
-Boosting is an ensemble method that combines a lot of weak learners to create strong lerner [link to good tutorial](https://gormanalysis.com/gradient-boosting-explained/). 
+Boosting is an ensemble method that combines a lot of weak learners to create strong learner [link to good tutorial](https://gormanalysis.com/gradient-boosting-explained/). 
+
 
 
 ```{r GradBoost, message=FALSE, warning=FALSE}
@@ -373,7 +420,7 @@ plot(rfFit)
 
 ## Neural Network Model
 
-```{r nnet}
+```{r nnet, message=FALSE, warning=FALSE}
 for(i in 1:list_length) seeds[[i]] <- sample.int(1000, 64) #n_units*n_decay=8*8=64
 nnetCtrl <- trainControl(method = "repeatedcv", 
                            number = n_resamples, 
@@ -406,7 +453,7 @@ plot(nnetFit)
 SVMctrl <- trainControl(method = "cv", number = n_resamples, verbose = FALSE)
 
 ## Fit Radial Kernel----------------------------------------------------------
-SVMgridRad <- expand.grid(C = (1:30)*0.1 + 0.2, sigma = c(0.02,0.04,0.06,0.08,0.1))
+SVMgridRad <- expand.grid(C = (1:30)*0.1 + 0.2, sigma = c(0.01,0.02,0.03))
 SVMFit_rk <- train(factor(Survived) ~ .,
                      data = Training, 
                      method = "svmRadial",
@@ -432,6 +479,7 @@ SVMFit_lk <- train(factor(Survived) ~ .,
                       tuneGrid = SVMgridLin,
                       preProc = c("scale","center"),
                       verbose = FALSE)
+plot(SVMFit_lk)
 ```
 
 
@@ -532,9 +580,9 @@ gather(results,train, test, -method, key = "type", value = "scores")%>%
 
 ```{r SubmissionPrep, message=FALSE, warning=FALSE,eval=FALSE,echo=FALSE}
 ## storing and outputing the predicting into csv file
-prediction <- test_pred_majority
+prediction <- test_pred_rf
 output <- data.frame(PassengerID = test_set$PassengerId, Survived = prediction)
-write.csv(output, file = 'prediction.csv', row.names = F)
+write.csv(output, file = 'rf_prediction.csv', row.names = F)
 ```
 
 ## Summary
