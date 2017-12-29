@@ -1,5 +1,5 @@
 ---
-title: "Titanic Project"
+title: "Hit Top 9 Percentile"
 author: "tar159"
 date: "December 15, 2017"
 output:
@@ -19,10 +19,10 @@ We must regularly go to gym in order to stay fit. Same concept applies to brain 
 some specific knowledge. One must be active in kaggle to train his/her machine learning muscles.
 Anyways, I've decided to do some deeper machine learning after taking some advanced ML courses. Looks
 like titanic data set is the best and most popular data to start with. Here, I will exploit some machine
-learning methods such as "knn", "Dtree", "prunnedTree", "gboosting", "nnet", "SVM" and "rf" with repeated
-cross validation that helps to choose best hyper parameter for an optimum prediction. Then, I combine all 
-predictions of test set to do majority vote. My finale prediction put me at top 9%, which is not bad
-for starters, but it is possible to push it even more up by combining more models. 
+learning methods such as "knn", "Dtree", "prunnedTree", "gboosting", "nnet", "SVM", "rf" and "xgBoost" with
+repeated cross validation that helps to choose best hyper parameter for an optimum prediction. Then, I combine
+all predictions of test set to do majority vote. My finale prediction put me at top 9%, which is not bad for
+starters, but it is possible to push it even more up by combining more models. 
 
 
 ```{r lib&data loading, echo=TRUE, message=FALSE, warning=FALSE}
@@ -122,7 +122,8 @@ data$Name <- NULL
 data$Ticket <- NULL
 test_set <- data[data$PassengerId >= 892,]
 train_set <- data[data$PassengerId < 892,]
-test_set$Survived <- NULL
+test_set$PassengerId <- NULL
+train_set$PassengerId <- NULL
 ```
 
 ## Some statistics
@@ -234,7 +235,7 @@ parameters to tune for cross validation. It is slow with large and high dimensio
 Best K value can be found via elbow method(k value is chosen based on location where cross validation
 RMSE converge), or based on peak cross validation accuracy. 
 
-```{r knn, eval=TRUE, message=FALSE, warning=FALSE}
+```{r knn, eval=TRUE, message=FALSE, warning=FALSE, fig.width=6}
 
 list_length <- n_resamples*n_repeats + 1
 seeds <- vector(mode = "list", length = list_length)
@@ -258,10 +259,12 @@ knnFit <- train(factor(Survived) ~ . ,
 
 #plot cross validation curve
 plot(knnFit)
+knn_best_tune <- knnFit$bestTune
+knn_cv_acc <- max(knnFit$results$Accuracy)
 ```
 
-As depicted above, the best number for nearest neighbor is `r knnFit$bestTune` that gave highest
-cross validation accuracy `r max(knnFit$results[2])`. Algorithm automatically chooses best fit for further processing.      
+As depicted above, the best number for nearest neighbor is `r knn_best_tune` that gave highest
+cross validation accuracy `r knn_cv_acc`. Algorithm automatically chooses best fit for further processing.      
 
 
 ## Decision Tree Classification with Post Prunnig 
@@ -270,7 +273,7 @@ Here I used decision tree classifier under "rpart" package. Information gain mea
 determine which feature is given a priority for splitting at each node. To prevent over fitting(PtreeFit)
 I performed post pruning, which does in turn score better than original tree(treeFit) on testing set.
 
-```{r tree, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, fig.width=5}
+```{r tree, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE, fig.width=6}
 #building a model with trees
 treeFit <- rpart(factor(Survived) ~.,
                      data = Training,
@@ -281,6 +284,8 @@ treeFit <- rpart(factor(Survived) ~.,
 
 #plot xerror vs complexity parameter for original tree
 plotcp(treeFit)
+
+#tree_cv_acc <- 1 - min(treeFit$cptable[,3])
 ```
 
 How does post pruning work? Basically first we grow the tree and fit our training set. Then we start from the
@@ -289,7 +294,7 @@ reduces the accuracy on validation set then we keep it, otherwise we remove it a
 to reduce tree size and help reduce over fitting. In order to do pruning program needs complexity parameter that corresponds 
 to a minimum xeror(cross validation error).  
 
-```{r tree_diagram, message=FALSE, warning=FALSE,fig.width=12}
+```{r tree_diagram, message=FALSE, warning=FALSE,fig.width=12,fig.height=8}
 ## plotting tree diagram
 rpart.plot(treeFit,
             fallen.leaves = FALSE,
@@ -298,9 +303,9 @@ rpart.plot(treeFit,
 
 ```
 
-Pruuuuunnnnneeeee itttttt!
+Let's prune it.
 
-```{r Ptree, message=FALSE, warning=FALSE, fig.width=6}
+```{r Ptree, message=FALSE, warning=FALSE, fig.width=10, fig.height=6}
 ## apply prunning using optimum values for "cp" and "nsplit" 
 cp <- treeFit$cptable[which.min(treeFit$cptable[,"xerror"]),"CP"]
 PtreeFit <- prune(treeFit, cp = cp)
@@ -308,8 +313,8 @@ PtreeFit <- prune(treeFit, cp = cp)
 ## plotting pruned tree diagram
 rpart.plot(PtreeFit,
             fallen.leaves = FALSE,
-#            cex = 0.2,
-#            tweak = 2,
+            cex = 0.3,
+        #    tweak = 2,
             shadow.col = "gray",
             sub = "Pruned Tree Diagram")
 ```
@@ -318,16 +323,15 @@ We can see that pruned tree is much smaller than the original in size, and later
 on testing set than the original fit. 
 
 
-## Stochastic Gradient Boosting "gbm"
+## Gradient Boosting "gbm"
 
-Boosting is an ensemble method that combines a lot of weak learners to create strong learner [link to good tutorial](https://gormanalysis.com/gradient-boosting-explained/). 
+Boosting is an ensemble method that combine multiple weak learners to create strong learner [link to good tutorial](https://gormanalysis.com/gradient-boosting-explained/).  
 
 
-
-```{r GradBoost, message=FALSE, warning=FALSE}
+```{r GradBoost, message=FALSE, warning=FALSE,fig.width=10,fig.height=8}
 gbmGrid <-  expand.grid(shrinkage = c(0.1,0.2,0.3,0.4),
                         interaction.depth = c(3,4,5,6), 
-                        n.trees = (2:50)*2,
+                        n.trees = (2:25)*2,
                         n.minobsinnode = 10)
 
 gbmCtrl <- trainControl(method = "repeatedcv",
@@ -347,7 +351,7 @@ plot(gbmFit)
 ```
 
 
-```{r extreme boosting, message=FALSE, warning=FALSE, eval=F, echo=F}
+```{r extreme boosting, message=FALSE, warning=FALSE, eval=F, echo=F,fig.width=10,fig.height=5}
 ## xgBoost Trees
 xgbctrl <- trainControl(method = "repeatedcv",
                         repeats = n_repeats,
@@ -355,11 +359,10 @@ xgbctrl <- trainControl(method = "repeatedcv",
                         #summaryFunction = twoClassSummary,
                         #classProbs = TRUE,
                         allowParallel=T)
-
                        
-xgbgrid <- expand.grid(nrounds = c(10,100,1000),
-                       eta = c(0.05,0.1,0.4),
-                       max_depth = c(2,4,6,8,10),
+xgbgrid <- expand.grid(nrounds = c(100,200,400),#,1000),
+                       eta = c(0.1,0.2,0.3,0.4),
+                       max_depth = c(2,4), #,6,8,10),
                        gamma = 1,
                        colsample_bytree = 0.7,
                        min_child_weight = 1,
@@ -371,12 +374,24 @@ xgbFit <-train( factor(Survived) ~. ,
                      trControl = xgbctrl,
                      tuneGrid = xgbgrid)
 
+plot(xgbFit)
+xgb_best_tune <- xgbFit$bestTune
+xgb_best_acc <- max(xgbFit$results$Accuracy)
 ```
 
 
 ##ML: Random Forest
 
-```{r Random Forest, eval=TRUE, message=FALSE, warning=FALSE}
+Random Forest is basically a decision tree method with bagging(bootstrap aggregating). Bagging is a resampling technique, where
+subset of data is drown from original data with replacement many many times. By training a model on each resampled equal size
+subset we get a lot of distinct models that can be built into strong learner when combined. In a Random Forest algorithm, 
+we grow a tree on each resampled N subsets of data and later aggregate finale fit of all those trees. Averaging multiple models
+have similar bias as each of the models on its own, and reduced variance because of the average taken. 
+Here I used custom made function for Random Forest classifier in order to have repeated cross validation via grid search under caret
+package[https://machinelearningmastery.com/tune-machine-learning-algorithms-in-r](link). 
+
+
+```{r Random Forest, eval=TRUE, message=FALSE, warning=FALSE,fig.width=6}
 
 #Here we create custom rf method repeatedcv method is not implemented with it 
 #####################################################################################
@@ -415,13 +430,22 @@ rfFit <- train(factor(Survived) ~.,
                trControl = rfCtrl)
 
 plot(rfFit)
+rf_cv_acc <-  max(rfFit$results$Accuracy)
+rf_best_tune <- rfFit$bestTune
 ```
+
+
 
 
 ## Neural Network Model
 
-```{r nnet, message=FALSE, warning=FALSE}
-for(i in 1:list_length) seeds[[i]] <- sample.int(1000, 64) #n_units*n_decay=8*8=64
+```{r nnet, message=FALSE, warning=FALSE,fig.width=6}
+decay = seq(from = 0.1, to = 0.9, by = 0.1)
+hidden_net_size = seq(from = 4, to = 18, by = 2)
+n_weight_decay <- length(decay)
+n_hidden_units <- length(hidden_net_size)
+for(i in 1:list_length) seeds[[i]] <- sample.int(1000, n_hidden_units*n_weight_decay)
+
 nnetCtrl <- trainControl(method = "repeatedcv", 
                            number = n_resamples, 
                            repeats = n_repeats, 
@@ -430,8 +454,8 @@ nnetCtrl <- trainControl(method = "repeatedcv",
                            seeds = seeds,
                            allowParallel = TRUE)
 
-nnetGrid <- expand.grid(size = seq(from = 4, to = 18, by = 2),
-                         decay = seq(from = 0.1, to = 0.8, by = 0.1))
+nnetGrid <- expand.grid(size = hidden_net_size,
+                         decay = decay)
 
 nnetFit <- train(make.names(Survived) ~ ., data = Training,
                  method = "nnet",
@@ -439,21 +463,30 @@ nnetFit <- train(make.names(Survived) ~ ., data = Training,
                  trControl = nnetCtrl,
                  preProcess = c("center","scale"),
                  tuneGrid = nnetGrid,
-                 verbose = FALSE)
+                 verbose = FALSE,
+                 trace = FALSE)
 
 plot(nnetFit)
+nnet_best_tune <- nnetFit$bestTune
+nnet_cv_roc <- max(nnetFit$results$ROC)
 ```
 
 
 ## SVM Radial Kernel
 
-```{r svm_rk, message=FALSE, warning=FALSE}
-
-## Support Vector Machines with radial kernel
-SVMctrl <- trainControl(method = "cv", number = n_resamples, verbose = FALSE)
+```{r svm_rk, message=FALSE, warning=FALSE,fig.width=6}
 
 ## Fit Radial Kernel----------------------------------------------------------
-SVMgridRad <- expand.grid(C = (1:30)*0.1 + 0.2, sigma = c(0.01,0.02,0.03))
+SVMgridRad <- expand.grid(C = (1:30)*0.1 + 0.2,
+                          sigma = c(0.01,0.02,0.03))
+
+## Support Vector Machines with radial kernel
+SVMctrl <- trainControl(method = "repeatedcv",
+                        number = n_resamples,
+                        repeats = n_repeats,
+                        verbose = FALSE,
+                        allowParallel = TRUE)
+
 SVMFit_rk <- train(factor(Survived) ~ .,
                      data = Training, 
                      method = "svmRadial",
@@ -462,6 +495,8 @@ SVMFit_rk <- train(factor(Survived) ~ .,
                      preProc = c("scale","center"),
                      verbose = FALSE)
 plot(SVMFit_rk)
+svmr_best_tune <- SVMFit_rk$bestTune
+svmr_cv_acc <- SVMFit_rk$results$Accuracy
 ```
 
 
@@ -479,7 +514,9 @@ SVMFit_lk <- train(factor(Survived) ~ .,
                       tuneGrid = SVMgridLin,
                       preProc = c("scale","center"),
                       verbose = FALSE)
-plot(SVMFit_lk)
+#plot(SVMFit_lk)
+svml_best_tune <- SVMFit_rk$bestTune
+svml_cv_acc <- SVMFit_rk$results$Accuracy
 ```
 
 
@@ -492,8 +529,9 @@ train_pred_tree <- predict(treeFit, Training, type = "class")
 train_pred_Ptree <- predict(PtreeFit, Training, type = "class")
 train_pred_rf <- predict(rfFit, Training, type = "raw")
 train_pred_nnet <- predict(nnetFit, Training, type = "raw")
-train_pred_svmr <- predict(SVMFit_rk, train_set, type="raw")
-train_pred_svml <- predict(SVMFit_lk, train_set, type="raw")
+train_pred_svmr <- predict(SVMFit_rk, Training, type="raw")
+train_pred_svml <- predict(SVMFit_lk, Training, type="raw")
+#train_pred_xgb <- predict(xgbFit, Training, type="raw")
 
 
 #combine all cv predictions into 1 data frame
@@ -505,6 +543,7 @@ TrainPredDF <- data.frame("knn" = as.numeric(train_pred_knn) -1,
                        "nnet" = as.numeric(train_pred_nnet) -1,
                        "svmR" = as.numeric(train_pred_svmr) -1,
                        "svmL" = as.numeric(train_pred_svml) -1)
+#                       "xboost" = as.numeric(train_pred_xgb) - 1)
 
 
 #predicting test set
@@ -516,6 +555,7 @@ test_pred_rf <- predict(rfFit, test_set, type = "raw")
 test_pred_nnet <- predict(nnetFit, test_set, type = "raw")
 test_pred_svmr <- predict(SVMFit_rk, test_set, type="raw")
 test_pred_svml <- predict(SVMFit_lk, test_set, type="raw")
+#test_pred_xgb <- predict(xgbFit, test_set, type="raw")
 
 TestPredDF <- data.frame("knn" = as.numeric(test_pred_knn) -1,
                          "tree" = as.numeric(test_pred_tree) -1,
@@ -525,12 +565,13 @@ TestPredDF <- data.frame("knn" = as.numeric(test_pred_knn) -1,
                          "nnet" = as.numeric(test_pred_nnet) -1,
                          "svmR" = as.numeric(test_pred_svmr) -1,
                          "svmL" = as.numeric(test_pred_svml) -1)
+#                         "xboost" = as.numeric(test_pred_xgb) - 1)
 
 ```
 
 
-```{r CorrPlot, message=FALSE, warning=FALSE, fig.width=10, fig.height=5}
-#CVPredDF$comb <- as.numeric(cv_pred_comb)
+
+```{r CorrPlot, message=FALSE, warning=FALSE, fig.width=12, fig.height=5}
 #visualize cv and test predictions via correlation plots
 par(mfrow = c(1,2), font = 2, font.main= 10, cex = 0.9)
 corrplot.mixed(cor(TestPredDF))
@@ -541,21 +582,16 @@ title(main = "Train set", adj = 0.5)
 
 
 ```{r combineViaGam, message=FALSE, warning=FALSE, eval=FALSE, echo=FALSE}
+#ensemble rediction
 TrainPredDF$Survived <- train_set$Survived
 train_combFit <- train(factor(Survived) ~. , method = "gam", data = TrainPredDF)
 train_pred_comb <- predict(train_combFit, TrainPredDF, type = "raw")
 test_pred_comb <- predict(train_combFit, TestPredDF, type = "raw")
 ```
 
-```{r majority vote, message=FALSE, warning=FALSE}
-tmp <- rowSums(TestPredDF) / ncol(TestPredDF)
-tmp[tmp >= 0.6] <- 1
-tmp[tmp < 0.6] <- 0
-test_pred_majority <- tmp
-```
-
 
 ```{r, message=FALSE, warning=FALSE,fig.height=5,fig.width=10}
+#combine all train and test scores into 1 df
 results <- data.frame(knn = c(confusionMatrix(train_pred_knn, Training$Survived)$overall[1],0.78947),
             tree = c(confusionMatrix(train_pred_tree, Training$Survived)$overall[1],0.73205),
             Ptree = c(confusionMatrix(train_pred_Ptree, Training$Survived)$overall[1],0.79425),
@@ -564,9 +600,11 @@ results <- data.frame(knn = c(confusionMatrix(train_pred_knn, Training$Survived)
             nnet = c(confusionMatrix(factor(as.numeric(train_pred_nnet)-1), Training$Survived)$overall[1],0.77990),
             svmr = c(confusionMatrix(train_pred_svmr, Training$Survived)$overall[1],0.79904),
             svml = c(confusionMatrix(train_pred_svml, Training$Survived)$overall[1],0.78468),
+#            xgb = c(confusionMatrix(train_pred_xgb, Training$Survived)$overall[1],0.74162),
             row.names = c("train","test"))%>%t()%>%data.frame()
 results$method <- rownames(results)
 
+#barplot all scores
 gather(results,train, test, -method, key = "type", value = "scores")%>%
         ggplot(aes(factor(method), scores, fill = type)) + 
             geom_bar(stat="identity", position = "dodge",width = 0.5) + 
@@ -577,12 +615,21 @@ gather(results,train, test, -method, key = "type", value = "scores")%>%
 ```        
 
 
+```{r majority vote, message=FALSE, warning=FALSE}
+tmp <- rowSums(TestPredDF) / ncol(TestPredDF)
+thresh_val <- 0.6
+tmp[tmp >= thresh_val] <- 1
+tmp[tmp < thresh_val] <- 0
+test_pred_majority <- tmp
+```
+
 
 ```{r SubmissionPrep, message=FALSE, warning=FALSE,eval=FALSE,echo=FALSE}
 ## storing and outputing the predicting into csv file
-prediction <- test_pred_rf
-output <- data.frame(PassengerID = test_set$PassengerId, Survived = prediction)
-write.csv(output, file = 'rf_prediction.csv', row.names = F)
+test_set$PassengerId <- row.names(test_set)
+prediction <- test_pred_majority
+output <- data.frame(PassengerId = test_set$PassengerId, Survived = prediction)
+write.csv(output, file = 'maj_prediction.csv', row.names = F)
 ```
 
 ## Summary
