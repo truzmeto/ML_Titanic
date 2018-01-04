@@ -1,5 +1,5 @@
 ---
-title: "Hit Top 9 Percentile"
+title: "Hit Top 8%"
 author: "tar159"
 date: "December 15, 2017"
 output:
@@ -15,14 +15,15 @@ options(warn = -1)
 
 ## Introduction
 
-We must regularly go to gym in order to stay fit. Same concept applies to brain muscles towards 
-some specific knowledge. One must be active in kaggle to train his/her machine learning muscles.
+Regular visits to gym is necessary in order to stay fit. Same concept applies to brain muscles towards 
+some specific field. One should probably be active in kaggle to train his/her machine learning muscles.
 Anyways, I've decided to do some deeper machine learning after taking some advanced ML courses. Looks
 like titanic data set is the best and most popular data to start with. Here, I will exploit some machine
 learning methods such as "knn", "Dtree", "prunnedTree", "gboosting", "nnet", "SVM", "rf" and "xgBoost" with
 repeated cross validation that helps to choose best hyper parameter for an optimum prediction. Then, I combine
-all predictions of test set to do majority vote. My finale prediction put me at top 9%, which is not bad for
-starters, but it is possible to push it even more up by combining more models. 
+all predictions of test set to do majority vote. My finale prediction put me at top 9%, which is not bad for a
+starter, but it is possible to push it even more up by combining more models. Most of the kernel I've come across
+mainly elaborate on EDA part rather than ML. Thus, I decided to concentrate on ML more than other aspects.   
 
 
 ```{r lib&data loading, echo=TRUE, message=FALSE, warning=FALSE}
@@ -59,11 +60,11 @@ data <- rbind(train_set, test_set)
 ## Preprocessing, Data Cleaning & Feature Extraction
 
 My preprocessing of unclean data is very similar to what most people have done. I need to give a credit
-to Megan Risdal since I learned some tricks from her kernel. 
+to [Megan Risdal](https://www.kaggle.com/mrisdal/exploring-survival-on-the-titanic) since I learned some tricks from her kernel. 
 
 ```{r preprocessing, message=FALSE, warning=FALSE}
 #counting percentage of NA's for each feature
-round(colSums(is.na(data))/nrow(data) *100,2)
+#round(colSums(is.na(data))/nrow(data) *100,2)
 
 #Cabin feature have 77.1% missing values, so let's ignore it.
 # removing Cabin features from both train and test sets
@@ -122,12 +123,12 @@ data$Name <- NULL
 data$Ticket <- NULL
 test_set <- data[data$PassengerId >= 892,]
 train_set <- data[data$PassengerId < 892,]
-test_set$PassengerId <- NULL
-train_set$PassengerId <- NULL
+#test_set$PassengerId <- NULL
+#train_set$PassengerId <- NULL
 ```
 
-## Some statistics
 
+## Some statistics
 
 ```{r, eval=T, echo=T, fig.height=8, fig.width=10, message=FALSE, warning=FALSE}
 
@@ -195,7 +196,6 @@ even at that time wealthy had advantage over the poor.
 2. By looking at peaks of distributions of ages histogramed by survival as a factor, we can conclude that average age of survived was
 less than the average age of deceased.  Mean age Survived = `r mean(train_set[train_set$Survived==1,]$Age)`, mean age deceased = 
 `r mean(train_set[train_set$Survived==0,]$Age)`.
-
 
 3. On average female tickets `r mean(data[data$Sex=='female',]$Fare)` were almost twice more expansive than male tickets
 `r mean(data[data$Sex=='male',]$Fare)`. This is a little unexpected. One rationalization could be that more females embarked on
@@ -291,8 +291,7 @@ plotcp(treeFit)
 How does post pruning work? Basically first we grow the tree and fit our training set. Then we start from the
 bottom and check if removing a node(where split happens) will affect prediction accuracy. If elimination of a node
 reduces the accuracy on validation set then we keep it, otherwise we remove it and proceed. These procedure is suppose 
-to reduce tree size and help reduce over fitting. In order to do pruning program needs complexity parameter that corresponds 
-to a minimum xeror(cross validation error).  
+to reduce tree size and help reduce over fitting. In order to do pruning program needs complexity parameter that correspondsto a minimum xeror(cross validation error).  
 
 ```{r tree_diagram, message=FALSE, warning=FALSE,fig.width=12,fig.height=8}
 ## plotting tree diagram
@@ -305,7 +304,7 @@ rpart.plot(treeFit,
 
 Let's prune it.
 
-```{r Ptree, message=FALSE, warning=FALSE, fig.width=10, fig.height=6}
+```{r Ptree, message=FALSE, warning=FALSE, fig.width=6}
 ## apply prunning using optimum values for "cp" and "nsplit" 
 cp <- treeFit$cptable[which.min(treeFit$cptable[,"xerror"]),"CP"]
 PtreeFit <- prune(treeFit, cp = cp)
@@ -313,8 +312,8 @@ PtreeFit <- prune(treeFit, cp = cp)
 ## plotting pruned tree diagram
 rpart.plot(PtreeFit,
             fallen.leaves = FALSE,
-            cex = 0.3,
-        #    tweak = 2,
+            cex = 0.7,
+            tweak = 1.5,
             shadow.col = "gray",
             sub = "Pruned Tree Diagram")
 ```
@@ -323,16 +322,31 @@ We can see that pruned tree is much smaller than the original in size, and later
 on testing set than the original fit. 
 
 
-## Gradient Boosting "gbm"
+## Stochastic Gradient Boosting "gbm"
 
-Boosting is an ensemble method that combine multiple weak learners to create strong learner [link to good tutorial](https://gormanalysis.com/gradient-boosting-explained/).  
+Boosting is an ensemble method that uses linear weighted combination of multiple weak learners to create strong learner [link to good a good paper](http://www.cs.princeton.edu/courses/archive/spr07/cos424/papers/boosting-survey.pdf), [good video tutorial](https://www.youtube.com/watch?v=w75WyRjRpAg).
+Algorithm iterativaly constructs set of weak classifiers such that every new hypothesis puts stronger emphasis on misclassified
+samples and less emphasis on correctly classified samples. At the end we get strong learner. 
+Here I used [Stochastic Gradient Boosting](https://en.wikipedia.org/wiki/Gradient_boosting), which is later modification to original boosting algorithm.
+In this algorithm, at each iteration a weak learner is fit on a subsample of the training set drawn randomly without
+replacement.
+
+Parameters: 
+
+1. shrinkage - learning rate, how quickly the algorithm adapts
+
+2. interaction.depth - complexity of the tree
+
+3. n.trees - number of iterations(trees grown)
+
+4. n.minobsinnode - the min number of training set samples in a node to commence splitting
 
 
 ```{r GradBoost, message=FALSE, warning=FALSE,fig.width=10,fig.height=8}
 gbmGrid <-  expand.grid(shrinkage = c(0.1,0.2,0.3,0.4),
                         interaction.depth = c(3,4,5,6), 
                         n.trees = (2:25)*2,
-                        n.minobsinnode = 10)
+                        n.minobsinnode = 50)
 
 gbmCtrl <- trainControl(method = "repeatedcv",
                            number = n_resamples,
@@ -349,6 +363,7 @@ gbmFit <- train(factor(Survived) ~ .,
 
 plot(gbmFit)
 ```
+
 
 
 ```{r extreme boosting, message=FALSE, warning=FALSE, eval=F, echo=F,fig.width=10,fig.height=5}
@@ -383,12 +398,18 @@ xgb_best_acc <- max(xgbFit$results$Accuracy)
 ##ML: Random Forest
 
 Random Forest is basically a decision tree method with bagging(bootstrap aggregating). Bagging is a resampling technique, where
-subset of data is drown from original data with replacement many many times. By training a model on each resampled equal size
-subset we get a lot of distinct models that can be built into strong learner when combined. In a Random Forest algorithm, 
+subset of data is drown from original data with replacement many many times. By training a model(tree) on each resampled equal size
+subset we get a lot of distinct models that can be built into stronger learner when combined. In a Random Forest algorithm, 
 we grow a tree on each resampled N subsets of data and later aggregate finale fit of all those trees. Averaging multiple models
 have similar bias as each of the models on its own, and reduced variance because of the average taken. 
 Here I used custom made function for Random Forest classifier in order to have repeated cross validation via grid search under caret
-package[https://machinelearningmastery.com/tune-machine-learning-algorithms-in-r](link). 
+package [link](https://machinelearningmastery.com/tune-machine-learning-algorithms-in-r). 
+
+Parameters:
+
+1. .mtry - number of variables randomly sampled at each split
+
+2. n.tree - number of trees to grow
 
 
 ```{r Random Forest, eval=TRUE, message=FALSE, warning=FALSE,fig.width=6}
@@ -415,7 +436,7 @@ customRF$levels <- function(x) x$classes
 
 for(i in 1:list_length) seeds[[i]] <- sample.int(1000, 60) # 4*15=60
 tunegrid <- expand.grid(.mtry = c(1:15),
-                        .ntree=c(500, 1000, 1500, 2000))
+                        .ntree=c(100, 200, 500, 1000))
 rfCtrl <- trainControl(method = "repeatedcv",
                      number = n_resamples,
                      repeats = n_repeats,
@@ -435,9 +456,10 @@ rf_best_tune <- rfFit$bestTune
 ```
 
 
-
-
 ## Neural Network Model
+
+Neural Network uses backpropagation algorithm in order to get optimal values for all weights. More hidden layers introduce
+more complexity into model but also resuts in more intensive computation.  
 
 ```{r nnet, message=FALSE, warning=FALSE,fig.width=6}
 decay = seq(from = 0.1, to = 0.9, by = 0.1)
@@ -474,6 +496,7 @@ nnet_cv_roc <- max(nnetFit$results$ROC)
 
 ## SVM Radial Kernel
 
+
 ```{r svm_rk, message=FALSE, warning=FALSE,fig.width=6}
 
 ## Fit Radial Kernel----------------------------------------------------------
@@ -500,9 +523,7 @@ svmr_cv_acc <- SVMFit_rk$results$Accuracy
 ```
 
 
-## SVM Linear Kernel
-
-```{r svm_lk, message=FALSE, warning=FALSE}
+```{r svm_lk, message=FALSE, warning=FALSE, echo=T,eval=T}
 
 ## Fit SVM Linear Kernel
 SVMgridLin <- expand.grid(C = (1:10)*0.2 + 0.5) 
@@ -520,6 +541,10 @@ svml_cv_acc <- SVMFit_rk$results$Accuracy
 ```
 
 
+## Combine all models
+
+Now all above models are cross validated by choosing the optimal hyperparameters. 
+
 ```{r Predictions, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
 
 #predicting cv set
@@ -532,7 +557,6 @@ train_pred_nnet <- predict(nnetFit, Training, type = "raw")
 train_pred_svmr <- predict(SVMFit_rk, Training, type="raw")
 train_pred_svml <- predict(SVMFit_lk, Training, type="raw")
 #train_pred_xgb <- predict(xgbFit, Training, type="raw")
-
 
 #combine all cv predictions into 1 data frame
 TrainPredDF <- data.frame("knn" = as.numeric(train_pred_knn) -1,
@@ -570,8 +594,7 @@ TestPredDF <- data.frame("knn" = as.numeric(test_pred_knn) -1,
 ```
 
 
-
-```{r CorrPlot, message=FALSE, warning=FALSE, fig.width=12, fig.height=5}
+```{r CorrPlot, message=FALSE, warning=FALSE, fig.width=10, fig.height=5}
 #visualize cv and test predictions via correlation plots
 par(mfrow = c(1,2), font = 2, font.main= 10, cex = 0.9)
 corrplot.mixed(cor(TestPredDF))
@@ -589,6 +612,15 @@ train_pred_comb <- predict(train_combFit, TrainPredDF, type = "raw")
 test_pred_comb <- predict(train_combFit, TestPredDF, type = "raw")
 ```
 
+```{r majority vote, message=FALSE, warning=FALSE}
+tmp <- rowSums(TestPredDF) / ncol(TestPredDF)
+thresh_val <- 0.6
+tmp[tmp >= thresh_val] <- 1
+tmp[tmp < thresh_val] <- 0
+test_pred_majority <- tmp
+```
+
+
 
 ```{r, message=FALSE, warning=FALSE,fig.height=5,fig.width=10}
 #combine all train and test scores into 1 df
@@ -600,7 +632,6 @@ results <- data.frame(knn = c(confusionMatrix(train_pred_knn, Training$Survived)
             nnet = c(confusionMatrix(factor(as.numeric(train_pred_nnet)-1), Training$Survived)$overall[1],0.77990),
             svmr = c(confusionMatrix(train_pred_svmr, Training$Survived)$overall[1],0.79904),
             svml = c(confusionMatrix(train_pred_svml, Training$Survived)$overall[1],0.78468),
-#            xgb = c(confusionMatrix(train_pred_xgb, Training$Survived)$overall[1],0.74162),
             row.names = c("train","test"))%>%t()%>%data.frame()
 results$method <- rownames(results)
 
@@ -615,16 +646,8 @@ gather(results,train, test, -method, key = "type", value = "scores")%>%
 ```        
 
 
-```{r majority vote, message=FALSE, warning=FALSE}
-tmp <- rowSums(TestPredDF) / ncol(TestPredDF)
-thresh_val <- 0.6
-tmp[tmp >= thresh_val] <- 1
-tmp[tmp < thresh_val] <- 0
-test_pred_majority <- tmp
-```
 
-
-```{r SubmissionPrep, message=FALSE, warning=FALSE,eval=FALSE,echo=FALSE}
+```{r SubmissionPrep, message=FALSE, warning=FALSE,eval=TRUE,echo=FALSE}
 ## storing and outputing the predicting into csv file
 test_set$PassengerId <- row.names(test_set)
 prediction <- test_pred_majority
@@ -632,7 +655,21 @@ output <- data.frame(PassengerId = test_set$PassengerId, Survived = prediction)
 write.csv(output, file = 'maj_prediction.csv', row.names = F)
 ```
 
+
+
 ## Summary
+
+1. Cross validation is a usefull approach to reduce training error, but does not necessarily help avoid overfitting. 
+
+2. Model specific cross validation via pruning the decision tree was able to balance bias and variance better than other hyperparameter
+   tuning approaches. 
+
+3. K-fold cross validation with repetitions can be extemely time consuming. One can accelarate the training by using very user friendly "doMC" library.  
+
+3. Combining different models by majority vote is a recognized way of boosting testing score!
+
+
+Feel free to leave a comment below and upvote if you liked it. I'll be more than happy to respond to any questions regarding the kernel. 
 
 
 
