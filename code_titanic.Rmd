@@ -19,9 +19,9 @@ Regular visits to gym is necessary in order to stay fit. Same concept applies to
 some specific field. One should probably be active in kaggle to train his/her machine learning muscles.
 Anyways, I've decided to do some deeper machine learning after taking some advanced ML courses. Looks
 like titanic data set is the best and most popular data to start with. Here, I will exploit some machine
-learning methods such as "knn", "Dtree", "prunnedTree", "gboosting", "nnet", "SVM", "rf" and "xgBoost" with
+learning methods such as "knn", "Dtree", "prunnedTree", "gboosting", "nnet", "SVM" and "rf" with
 repeated cross validation that helps to choose best hyper parameter for an optimum prediction. Then, I combine
-all predictions of test set to do majority vote. My finale prediction put me at top 9%, which is not bad for a
+all predictions of test set to do majority vote. My finale prediction put me at top 8%, which is not bad for a
 starter, but it is possible to push it even more up by combining more models. Most of the kernel I've come across
 mainly elaborate on EDA part rather than ML. Thus, I decided to concentrate on ML more than other aspects.   
 
@@ -458,8 +458,14 @@ rf_best_tune <- rfFit$bestTune
 
 ## Neural Network Model
 
-Neural Network uses backpropagation algorithm in order to get optimal values for all weights. More hidden layers introduce
-more complexity into model but also resuts in more intensive computation.  
+Neural Network uses backpropagation algorithm in order to get optimal values for all weights.
+More hidden layers introduce more complexity into model but also resuts in more intensive computation.  
+
+Hyper parameters:
+
+1. number of hidden units
+
+2. weight decay - is a regularization term that penalizes big weights and by doing so helps avoid over-fitting
 
 ```{r nnet, message=FALSE, warning=FALSE,fig.width=6}
 decay = seq(from = 0.1, to = 0.9, by = 0.1)
@@ -494,8 +500,21 @@ nnet_cv_roc <- max(nnetFit$results$ROC)
 ```
 
 
-## SVM Radial Kernel
+## Support Vector Machine (SVM)
 
+[Support Vector Machine](https://www.kdnuggets.com/2016/07/support-vector-machines-simple-explanation.html)
+is supervised learning algorithm used for classification problems.
+It classifies instances by choosing an optimum decision boundary(can be both linear and non-linear)
+with maximum margin, where length of the margin is half distance between two support vectors. 
+
+Hyperparameters: 
+
+1. C - is a regularization parameter that controls the trade off between the achieving a low training
+   error and a low testing error that is the ability to generalize your classifier to unseen data
+
+2. $\sigma$ - is related to standard deviation of gaussian when we use radial basis function. 
+
+## Radial Kernel
 
 ```{r svm_rk, message=FALSE, warning=FALSE,fig.width=6}
 
@@ -522,6 +541,7 @@ svmr_best_tune <- SVMFit_rk$bestTune
 svmr_cv_acc <- SVMFit_rk$results$Accuracy
 ```
 
+## Linear Kernel
 
 ```{r svm_lk, message=FALSE, warning=FALSE, echo=T,eval=T}
 
@@ -543,10 +563,12 @@ svml_cv_acc <- SVMFit_rk$results$Accuracy
 
 ## Combine all models
 
-Now all above models are cross validated by choosing the optimal hyperparameters. 
+Now all above models are cross validated by choosing the optimal hyperparameters. Next, we combine them
+in order to generate majority vote. Note that, usually odd number of models should be combined to avoid
+getting 50%-50% vote. Since, I have even number of models combined, I'll just put threshhold at 0.6 .
+
 
 ```{r Predictions, eval=TRUE, echo=TRUE, message=FALSE, warning=FALSE}
-
 #predicting cv set
 train_pred_boost <- predict(gbmFit, Training, type = "raw")
 train_pred_knn <- predict(knnFit, Training, type = "raw")
@@ -593,6 +615,8 @@ TestPredDF <- data.frame("knn" = as.numeric(test_pred_knn) -1,
 
 ```
 
+In order to see similarities of prediction on both test and train sets one can do correlation plot between models and plot them.
+Whole idea behind majority vote is, we expect our final model on average to do better than a chance. 
 
 ```{r CorrPlot, message=FALSE, warning=FALSE, fig.width=10, fig.height=5}
 #visualize cv and test predictions via correlation plots
@@ -655,6 +679,12 @@ output <- data.frame(PassengerId = test_set$PassengerId, Survived = prediction)
 write.csv(output, file = 'maj_prediction.csv', row.names = F)
 ```
 
+
+## What can be done next
+
+1. Well, one can add more different type of models and increase test accuracy
+
+2. Domain knowledge based feature enginearing can help boost prediction[Oscar Takeshita](https://www.kaggle.com/pliptor/divide-and-conquer-0-82296) 
 
 
 ## Summary
